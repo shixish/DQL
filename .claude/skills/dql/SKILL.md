@@ -65,7 +65,8 @@ Default to `type:Organization` when the entity type is ambiguous.
 | OR | `or(v1,v2)` | `industries:or("Software","Hardware")` |
 | NOT | `!` prefix | `!isPublic:true` |
 | Facet (aggregate) | `facet:field` | `facet:locations.city.name` |
-| Sort | `sortBy:field` | `sortBy:nbEmployees` |
+| Sort ascending | `sortBy:field` | `sortBy:nbEmployees` |
+| Sort descending | `revSortBy:field` | `revSortBy:nbEmployees` |
 
 **Subquery syntax for nested fields**
 
@@ -97,6 +98,8 @@ curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20industries:"
 The response includes a `precision` field that shows the type of each suggestion, e.g. `[Location].venue -> [String]` — bracketed types indicate nestable fields that support subquery `{}` syntax.
 
 Always validate unfamiliar field names and enum values via the suggestion API before executing the final query.
+
+Before executing, display the final DQL query in a plain text code block so the user can copy or iterate on it.
 
 ### Step 3 — Execute the request
 
