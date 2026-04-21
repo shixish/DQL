@@ -44,13 +44,13 @@ Translate the user's natural language request into a DQL string, using the sugge
 
 **Entity types**
 
-| Type | Use for |
-|------|---------|
-| `type:Organization` | Companies, nonprofits, institutions |
-| `type:Person` | Individual people |
-| `type:Article` | News articles, blog posts |
+Common types include `type:Organization`, `type:Person`, `type:Article`, and `type:Product`, but others exist. Use the suggestion API to discover available types:
 
-Default to `type:Organization` when the entity type is ambiguous.
+```bash
+curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:"
+```
+
+`type:` is the minimum required field for any query. Default to `type:Organization` when the entity type is ambiguous.
 
 **Operators**
 
