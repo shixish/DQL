@@ -38,11 +38,7 @@ Tokens are available at https://app.diffbot.com/get-started/
 
 ### Step 2 — Construct and validate the DQL query
 
-Translate the user's natural language request into a DQL string. Use the ontology cache (Step 2a) and suggestion API (Step 2b) as needed while building the query.
-
-#### Step 2a — Query the ontology cache
-
-Use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL. This avoids typos and ensures enum values are exact.
+Translate the user's natural language request into a DQL string. Use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL. This avoids typos and ensures enum values are exact.
 
 ```bash
 # All entity type names
@@ -93,25 +89,6 @@ leType[]   — linked entity type names (when isEntity: true)
 taxonomy   — taxonomy name (when field draws from a taxonomy)
 ```
 
-#### Step 2b — Suggestion API for partial-string autocomplete
-
-Use `https://kg.diffbot.com/kg/ac/dql?query={query}` (no token required) to autocomplete partial field names or discover valid enum values you haven't looked up yet:
-
-```bash
-# Discover fields available on Organization
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20"
-
-# Validate a partial field name (e.g. "ind" → "industries")
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20ind"
-
-# Discover valid values for a field
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20industries:"
-```
-
-The response includes a `precision` field showing each suggestion's type, e.g. `[Location].venue -> [String]` — bracketed types indicate nestable fields that support subquery `{}` syntax.
-
-Prefer the ontology cache for bulk field/enum discovery. Use the suggestion API for partial-string autocomplete or when exploring an unfamiliar field's values.
-
 **Entity types**
 
 `type:` is the minimum required field for any query. Common types: `type:Organization`, `type:Person`, `type:Article`, `type:Product`. Default to `type:Organization` when ambiguous.
@@ -142,7 +119,7 @@ type:Organization locations.{city.name:"San Francisco" isCurrent:true}
 
 This ensures San Francisco is a *current* location, not that San Francisco is any location and some other location is current. Without `{}`, the two conditions are independent.
 
-Not all fields support subqueries. The suggestion API indicates nestable fields by showing their type in brackets, e.g. `[Location].venue -> [String]`. Attempting `{}` on a non-nested field returns: `Nested expression over non-nested list field [...] is not allowed`.
+Not all fields support subqueries. Nestable fields have a composite type (e.g. `Location`, `Employment`) — check the ontology cache with `jq` to confirm. Attempting `{}` on a non-nested field returns: `Nested expression over non-nested list field [...] is not allowed`.
 
 Before executing, display the final DQL query in a plain text code block so the user can copy or iterate on it.
 
