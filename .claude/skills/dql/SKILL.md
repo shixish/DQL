@@ -63,7 +63,7 @@ Default to `type:Organization` when the entity type is ambiguous.
 | Less than | `field<N` | `nbEmployees<10000` |
 | AND (implicit) | space-separated | `type:Organization isPublic:true` |
 | OR | `or(v1,v2)` | `industries:or("Software","Hardware")` |
-| NOT | `!` prefix | `!isPublic:true` |
+| NOT | `not(condition)` | `not(isPublic:true)`, `not(has:parentCompany)` |
 | Facet (aggregate) | `facet:field` | `facet:locations.city.name` |
 | Sort ascending | `sortBy:field` | `sortBy:nbEmployees` |
 | Sort descending | `revSortBy:field` | `revSortBy:nbEmployees` |
