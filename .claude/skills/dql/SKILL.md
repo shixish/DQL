@@ -1,36 +1,26 @@
 ---
 name: dql
 description: "Query the Diffbot Knowledge Graph using DQL (Diffbot Query Language). Use when the user wants to search for organizations, people, or articles in the Diffbot KG. Triggers on: search diffbot, query knowledge graph, dql search, find companies in diffbot, diffbot lookup, kg search."
-allowed-tools: Bash(curl*), Bash(grep*), Bash(python3*)
+allowed-tools: Bash(curl*), Bash(grep*), Bash(python3*), Bash(jq*)
 ---
 
 # Diffbot Knowledge Graph Search (DQL)
 
 Query the Diffbot Knowledge Graph via the DQL API. Translate the user's plain-text request into a DQL query, execute it with curl, and display formatted results.
 
-## Prerequisites: API Key
-
-The API token must exist at `~/.diffbot/credentials`. Check with:
-
-```bash
-grep '^token=' ~/.diffbot/credentials
-```
-
-If missing, ask the user to run the one-time setup:
-
-```bash
-mkdir -p ~/.diffbot && chmod 700 ~/.diffbot
-echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials
-chmod 600 ~/.diffbot/credentials
-```
-
-Tokens are available at https://app.diffbot.com/get-started/
-
 ## Workflow
 
 Always follow these steps in order:
 
-### Step 1 — Read the token
+### Step 1 — Initialize credentials and ontology cache
+
+**Step 1a** — Create `~/.diffbot/` and refresh the ontology cache (no token required):
+
+```bash
+mkdir -p ~/.diffbot && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json
+```
+
+**Step 1b** — Read the API token:
 
 ```bash
 TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
@@ -38,19 +28,93 @@ TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
 
 Never echo or display the token value.
 
+If `~/.diffbot/credentials` is missing, the directory already exists from Step 1a. Ask the user to run:
+
+```bash
+echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials && chmod 600 ~/.diffbot/credentials
+```
+
+Tokens are available at https://app.diffbot.com/get-started/
+
 ### Step 2 — Construct and validate the DQL query
 
-Translate the user's natural language request into a DQL string, using the suggestion API to validate field names and values as you build it.
+Translate the user's natural language request into a DQL string. Use the ontology cache (Step 2a) and suggestion API (Step 2b) as needed while building the query.
+
+#### Step 2a — Query the ontology cache
+
+Use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL. This avoids typos and ensures enum values are exact.
+
+```bash
+# All entity type names
+jq '.types | keys[]' ~/.diffbot/ontology.json
+
+# All queryable (non-deprecated) fields for a type, with value type and list flag
+jq '.types.Organization.fields | to_entries[]
+    | select(.value.isDeprecated==false)
+    | "\(.key): \(.value.type)\(if .value.isList then " []" else "" end)"' \
+    ~/.diffbot/ontology.json
+
+# Fields for a composite type (e.g. Employment, Location)
+jq '.composites.Employment.fields | keys[]' ~/.diffbot/ontology.json
+
+# Valid values for an enum
+jq '.enums.Industry.values[]' ~/.diffbot/ontology.json
+
+# Type hierarchy (which parent types contribute inherited fields)
+jq '.types.Organization.typeHierarchy' ~/.diffbot/ontology.json
+
+# Top-level taxonomy category names
+jq '.taxonomies.IndustryCategory.categories[].name' ~/.diffbot/ontology.json
+```
+
+**Ontology schema reference**
+
+The cached file has these top-level keys:
+
+```
+metadata    — kg-version, binary-version, generated timestamp
+types       — 61 entity types (Organization, Person, Article, Product, …)
+              Each entry: { name, typeHierarchy[], fields{}, documented }
+composites  — 54 sub-object types used as field values (e.g. Location, Employment)
+              Same shape as types
+enums       — 26 enumerations; each: { name, values[] }
+taxonomies  — 5 hierarchical category trees (IndustryCategory, EmploymentCategory, …)
+              Each entry: { categories[{ name, info?, children? }] }
+dev-notes   — human-readable description string
+```
+
+Each field definition inside `types` and `composites` has:
+
+```
+name, description, type (String/Integer/composite name/…),
+isList, isPrimitive, isComposite, isEntity, isEnum, isDeprecated,
+isFact, documented, tracksFirstSeen,
+leType[]   — linked entity type names (when isEntity: true)
+taxonomy   — taxonomy name (when field draws from a taxonomy)
+```
+
+#### Step 2b — Suggestion API for partial-string autocomplete
+
+Use `https://kg.diffbot.com/kg/ac/dql?query={query}` (no token required) to autocomplete partial field names or discover valid enum values you haven't looked up yet:
+
+```bash
+# Discover fields available on Organization
+curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20"
+
+# Validate a partial field name (e.g. "ind" → "industries")
+curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20ind"
+
+# Discover valid values for a field
+curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20industries:"
+```
+
+The response includes a `precision` field showing each suggestion's type, e.g. `[Location].venue -> [String]` — bracketed types indicate nestable fields that support subquery `{}` syntax.
+
+Prefer the ontology cache for bulk field/enum discovery. Use the suggestion API for partial-string autocomplete or when exploring an unfamiliar field's values.
 
 **Entity types**
 
-Common types include `type:Organization`, `type:Person`, `type:Article`, and `type:Product`, but others exist. Use the suggestion API to discover available types:
-
-```bash
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:"
-```
-
-`type:` is the minimum required field for any query. Default to `type:Organization` when the entity type is ambiguous.
+`type:` is the minimum required field for any query. Common types: `type:Organization`, `type:Person`, `type:Article`, `type:Product`. Default to `type:Organization` when ambiguous.
 
 **Operators**
 
@@ -80,25 +144,6 @@ This ensures San Francisco is a *current* location, not that San Francisco is an
 
 Not all fields support subqueries. The suggestion API indicates nestable fields by showing their type in brackets, e.g. `[Location].venue -> [String]`. Attempting `{}` on a non-nested field returns: `Nested expression over non-nested list field [...] is not allowed`.
 
-**Using the suggestion API**
-
-Use `https://kg.diffbot.com/kg/ac/dql?query={query}` (no token required) to validate field names and discover valid values while building the query. Iterate from partial queries:
-
-```bash
-# Discover fields available on Organization
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20"
-
-# Validate a field name (e.g. check "ind" suggests "industries")
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20ind"
-
-# Discover valid values for a field
-curl -s "https://kg.diffbot.com/kg/ac/dql?query=type:Organization%20industries:"
-```
-
-The response includes a `precision` field that shows the type of each suggestion, e.g. `[Location].venue -> [String]` — bracketed types indicate nestable fields that support subquery `{}` syntax.
-
-Always validate unfamiliar field names and enum values via the suggestion API before executing the final query.
-
 Before executing, display the final DQL query in a plain text code block so the user can copy or iterate on it.
 
 ### Step 3 — Execute the request
@@ -115,11 +160,7 @@ The response structure:
 - `hits` — total matching entity count (integer)
 - `data[]` — array of result objects, each with an `entity` key
 
-Pipe the curl output into an inline Python script to parse and display results. The response structure:
-- `hits` — total match count
-- `data[].entity` — the entity objects
-
-Write an appropriate formatter for the entity type being queried. For facet queries, aggregated counts are in a `facets` key alongside `data`.
+Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. For facet queries, aggregated counts are in a `facets` key alongside `data`.
 
 After displaying results, offer to fetch the next page or refine the query.
 

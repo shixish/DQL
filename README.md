@@ -2,19 +2,27 @@
 
 A Claude Code skill for querying the [Diffbot Knowledge Graph](https://docs.diffbot.com/docs/getting-started-with-diffbot) using natural language. You describe what you're looking for; Claude constructs the DQL query and runs it.
 
+## Dependencies
+
+- **`curl`** — pre-installed on macOS and most Linux distros
+- **`jq`** — JSON query tool used to inspect the ontology cache
+  - macOS Ventura+: ships with the OS. Otherwise: `brew install jq`
+  - Linux: `sudo apt install jq` / `sudo dnf install jq`
+  - Windows (WSL): `sudo apt install jq`
+
 ## Setup
 
 **1. Get your Diffbot API token** from https://app.diffbot.com/get-started/
 
-**2. Store it locally** (one time per machine — never committed to the repo):
+**2. Open this project in Claude Code** and run `/dql` once. The skill will create `~/.diffbot/` and cache the ontology automatically, then tell you credentials are missing.
+
+**3. Store your token:**
 
 ```bash
-mkdir -p ~/.diffbot && chmod 700 ~/.diffbot
-echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials
-chmod 600 ~/.diffbot/credentials
+echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials && chmod 600 ~/.diffbot/credentials
 ```
 
-**3. Open this project in Claude Code.** The skill is picked up automatically from `.claude/skills/dql/`.
+That's it. Run `/dql` again and it's ready.
 
 ## Usage
 
@@ -36,4 +44,4 @@ Claude will construct the DQL query, execute it against the Diffbot API, and ret
 token=YOUR_DIFFBOT_TOKEN_HERE
 ```
 
-The file lives at `~/.diffbot/credentials` on your local machine and is never part of this repository.
+The file lives at `~/.diffbot/credentials` on your local machine and is never part of this repository. The ontology cache at `~/.diffbot/ontology.json` is refreshed automatically each time the skill runs.
