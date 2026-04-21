@@ -139,6 +139,12 @@ The response structure:
 
 Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. For facet queries, aggregated counts are in a `facets` key alongside `data`.
 
+**Display format**
+
+Render results as a terminal table (use plain ASCII borders). Choose columns appropriate to the entity type — for example, Organization: Name, Industry, Employees, Location, Website.
+
+If the result set is large enough that the table would be unwieldy in the terminal (more than ~25 rows or more than ~6 columns), offer to write the results to a CSV file instead before rendering.
+
 After displaying results, offer to fetch the next page or refine the query.
 
 ## Error handling
