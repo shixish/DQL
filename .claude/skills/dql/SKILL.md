@@ -14,21 +14,13 @@ Always follow these steps in order:
 
 ### Step 1 — Initialize credentials and ontology cache
 
-**Step 1a** — Create `~/.diffbot/` and refresh the ontology cache (no token required):
-
 ```bash
-mkdir -p ~/.diffbot && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json
-```
-
-**Step 1b** — Read the API token:
-
-```bash
-TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
+mkdir -p ~/.diffbot && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json && TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
 ```
 
 Never echo or display the token value.
 
-If `~/.diffbot/credentials` is missing, the directory already exists from Step 1a. Ask the user to run:
+If `~/.diffbot/credentials` is missing, the directory already exists. Ask the user to run:
 
 ```bash
 echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials && chmod 600 ~/.diffbot/credentials
@@ -38,7 +30,7 @@ Tokens are available at https://app.diffbot.com/get-started/
 
 ### Step 2 — Construct and validate the DQL query
 
-Translate the user's natural language request into a DQL string. Use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL. This avoids typos and ensures enum values are exact.
+Translate the user's natural language request into a DQL string. For well-known entity types (Organization, Person, Article, Product), construct the query directly. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
 
 ```bash
 # All entity type names
@@ -132,12 +124,27 @@ Default `size=10`. Increase up to `size=50` if the user asks for more results. F
 ### Step 4 — Format and display results
 
 The response structure:
-- `hits` — total matching entity count (integer)
-- `data[]` — array of result objects, each with an `entity` key
+- `hits` — integer, total matching entity count
+- `results` — integer, count of entities returned in this page
+- `facet` — boolean, true when the query used `facet:`
+- `data[]` — array of result objects:
+  - Normal queries: each item has `score`, `entity` (the entity object), and `entity_ctx`
+  - Facet queries: each item has `value`, `count`, and `callbackQuery` — there is no `entity` key and no separate `facets` top-level key
 
 Always display the final DQL query in a plain text code block before the results, so the user can copy or iterate on it.
 
-Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. For facet queries, aggregated counts are in a `facets` key alongside `data`.
+Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. Always use a heredoc to avoid shell quoting issues:
+
+```bash
+curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10" | python3 << 'EOF'
+import sys, json
+data = json.load(sys.stdin)
+hits = data['hits']  # plain integer
+items = data['data']
+# For normal queries: entity = item['entity']
+# For facet queries: value = item['value'], count = item['count']
+EOF
+```
 
 **Display format**
 
@@ -153,6 +160,6 @@ After displaying results, offer to fetch the next page or refine the query.
 |---------|-------------|-----|
 | HTTP 401 | Invalid or missing token | Check `~/.diffbot/credentials` |
 | HTTP 400 | Malformed DQL | Check field names and operators |
-| `hits.total = 0` | Query too restrictive | Broaden filters or check spelling |
+| `hits = 0` | Query too restrictive | Broaden filters or check spelling |
 | `curl: (6) Could not resolve host` | No network | Check connectivity |
 | Empty `~/.diffbot/credentials` | Setup not done | Run the setup commands above |
