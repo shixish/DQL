@@ -15,7 +15,7 @@ Always follow these steps in order:
 ### Step 1 — Initialize credentials and ontology cache
 
 ```bash
-mkdir -p ~/.diffbot && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json && TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
+mkdir -p ~/.diffbot && rm -rf ~/.diffbot/tmp && mkdir ~/.diffbot/tmp && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json && TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
 ```
 
 Never echo or display the token value.
@@ -30,7 +30,9 @@ Tokens are available at https://app.diffbot.com/get-started/
 
 ### Step 2 — Construct and validate the DQL query
 
-Translate the user's natural language request into a DQL string. `type:` is the minimum required field for any query — default to `type:Organization` when ambiguous. For well-known entity types (Organization, Person, Article, Product), construct the query directly. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
+Translate the user's natural language request into a DQL string. `type:` is the minimum required field for any query — default to `type:Organization` when ambiguous. For well-known entity types (Organization, Person, Article, Product), construct the query directly without any `jq` ontology lookups — do not run jq for these types. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
+
+For `type:Article` queries that filter on `categories.name`, run a quick facet query first to discover the exact category name string (e.g. `facet:categories.name` filtered by a broad tag) — category names are not free-text and must match exactly.
 
 ```bash
 # All entity type names
@@ -169,17 +171,21 @@ The response structure:
 
 Always display the final DQL query in a plain text code block before the results, so the user can copy or iterate on it.
 
-Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. Always use a heredoc to avoid shell quoting issues:
+Write a Python formatter script to `~/.diffbot/tmp/dql_format.py` (using the Write tool), fetch the curl response to `~/.diffbot/tmp/dql_results.json`, then execute. Keeping both files on disk lets you iterate on formatting without re-fetching the API, and makes debugging straightforward.
 
-```bash
-curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10" | python3 << 'EOF'
-import sys, json
-data = json.load(sys.stdin)
+```python
+# ~/.diffbot/tmp/dql_format.py
+import json, os
+with open(os.path.expanduser('~/.diffbot/tmp/dql_results.json')) as f:
+    data = json.load(f)
 hits = data['hits']  # plain integer
 items = data['data']
 # For normal queries: entity = item['entity']
 # For facet queries: value = item['value'], count = item['count']
-EOF
+```
+
+```bash
+curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10" > ~/.diffbot/tmp/dql_results.json && python3 ~/.diffbot/tmp/dql_format.py
 ```
 
 **Filtering the response**
