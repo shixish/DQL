@@ -94,12 +94,26 @@ taxonomy   — taxonomy name (when field draws from a taxonomy)
 | Exact match | `strict:field:"value"` | `strict:name:"Apple Inc"` |
 | Greater than | `field>N` | `nbEmployees>500` |
 | Less than | `field<N` | `nbEmployees<10000` |
+| Not equals | `field!=value` | `type:Organization gender!="MALE"` |
 | AND (implicit) | space-separated | `type:Organization isPublic:true` |
 | OR | `or(v1,v2)` | `industries:or("Software","Hardware")` |
 | NOT | `not(condition)` | `not(isPublic:true)`, `not(has:parentCompany)` |
 | Facet (aggregate) | `facet:field` | `facet:locations.city.name` |
+| Facet with ranges | `facet[a:b,b:c]:field` | `facet[100:500,500:1000]:nbEmployees` |
+| Facet with values | `facet["a","b"]:field` | `facet["Austin","Seattle"]:locations.city.name` |
 | Sort ascending | `sortBy:field` | `sortBy:nbEmployees` |
 | Sort descending | `revSortBy:field` | `revSortBy:nbEmployees` |
+
+**Facet queries**
+
+Reach for facet queries when the goal is aggregation or distribution analysis rather than retrieving individual entities — e.g. "what industries are most common among Berlin startups?" or "how are employees distributed across company sizes?". A facet query returns up to 1000 buckets ordered by frequency, each with a `count`, `value`, and `callbackQuery` you can use to drill into matching entities. They are not appropriate when the user wants to see individual entity records.
+
+Key behaviors to know:
+- Numeric and date fields are automatically grouped into ranges; custom ranges can be specified with `facet[a:b,b:c]:field`
+- Date fields accept `day`, `week`, or `month` interval specifiers
+- Results can be restricted to specific values with `facet["v1","v2"]:field`
+
+See [Facet Queries](https://docs.diffbot.com/docs/facet-queries.md) for full syntax and examples.
 
 **Subquery syntax for nested fields**
 
@@ -145,6 +159,16 @@ items = data['data']
 # For facet queries: value = item['value'], count = item['count']
 EOF
 ```
+
+**Filtering the response**
+
+Entity objects can be large. When analyzing results in context, use the `&filter=` query parameter to request only the fields needed — this minimizes data transfer and token usage. See [Filtering Fields](https://docs.diffbot.com/reference/filtering-fields.md) for full syntax.
+
+```bash
+curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10&filter=name,nbEmployees,industries,locations"
+```
+
+When the user requests a full JSON dump or CSV download, omit the filter to get the complete response.
 
 **Display format**
 
