@@ -90,6 +90,8 @@ taxonomy   — taxonomy name (when field draws from a taxonomy)
 
 `type:Article` queries have special handling for tags (entity mentions with sentiment) and categories (IAB/Diffbot taxonomy labels). Tags can be searched by entity URI, label, or type; categories by ID or name. Both support `OR()`, subquery `{}` syntax, and faceting. See [Article Tags and Categories](https://docs.diffbot.com/docs/article-tags-and-categories.md).
 
+When filtering on multiple `categories.name` values simultaneously, the conditions are independent — a document qualifies if it has been assigned both labels, regardless of whether the content is specifically about their intersection. This can produce noisy results. For tighter precision, combine one category condition with a `tags.label` filter for the other dimension.
+
 **Operators**
 
 | Operator             | Syntax                 | Example                                                  |
@@ -185,6 +187,10 @@ hits = data['hits']  # plain integer
 items = data['data']
 # For normal queries: entity = item['entity']
 # For facet queries: value = item['value'], count = item['count']
+
+# Entity field structure varies by type:
+#   Article — fields are plain primitives (title is a str, date is a dict with 'str'/'timestamp')
+#   Organization/Person — fields are wrapped objects: {value, confidence, origin}
 ```
 
 ```bash
@@ -198,6 +204,8 @@ Entity objects can be large. When analyzing results in context, use the `&filter
 ```bash
 curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10&filter=name,nbEmployees,industries,locations"
 ```
+
+The filter syntax is sensitive — the API returns `Parse filter failed` if a path is malformed. If this occurs, verify the field paths against the docs or drop the filter and work with the full response.
 
 When the user requests a full JSON dump or CSV download, omit the filter to get the complete response.
 
