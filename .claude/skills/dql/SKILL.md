@@ -167,7 +167,7 @@ Default `size=10`. Increase up to `size=50` if the user asks for more results. F
 
 The response structure:
 
-- `hits` — integer, total matching entity count
+- `hits` — integer, total matching entity count (always present, regardless of `&filter=`)
 - `results` — integer, count of entities returned in this page
 - `facet` — boolean, true when the query used `facet:`
 - `data[]` — array of result objects:
@@ -181,16 +181,24 @@ Write a Python formatter script to `~/.diffbot/tmp/dql_format.py` (using the Wri
 ```python
 # ~/.diffbot/tmp/dql_format.py
 import json, os
+from datetime import datetime, timezone
 with open(os.path.expanduser('~/.diffbot/tmp/dql_results.json')) as f:
     data = json.load(f)
-hits = data['hits']  # plain integer
+hits = data['hits']  # plain integer — always present, even with &filter=
 items = data['data']
 # For normal queries: entity = item['entity']
 # For facet queries: value = item['value'], count = item['count']
 
 # Entity field structure varies by type:
-#   Article — fields are plain primitives (title is a str, date is a dict with 'str'/'timestamp')
+#   Article — fields are plain primitives (title is a str, date is a DDateTime composite)
 #   Organization/Person — fields are wrapped objects: {value, confidence, origin}
+
+# DDateTime / DDate composite fields (e.g. Article.date, Article.estimatedDate):
+#   { "str": "d2025-05-08T07:05", "precision": 4, "timestamp": 1746687900000 }
+#   str    — Diffbot-internal encoding: leading "d" + ISO-8601. DO NOT parse str directly.
+#   timestamp — Unix milliseconds (UTC). Always prefer this for display:
+date_field = entity.get('date', {}) or {}
+date_str = datetime.fromtimestamp(date_field['timestamp'] / 1000, tz=timezone.utc).strftime('%Y-%m-%d') if date_field.get('timestamp') else ''
 ```
 
 ```bash
@@ -199,15 +207,13 @@ curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&siz
 
 **Filtering the response**
 
-Entity objects can be large. When analyzing results in context, use the `&filter=` query parameter to request only the fields needed — this minimizes data transfer and token usage. See [Filtering Fields](https://docs.diffbot.com/reference/filtering-fields.md) for full syntax.
+Use `&filter=` to request only specific fields from the API — useful when you want to reduce data transfer or limit what the formatter has to handle. See [Filtering Fields](https://docs.diffbot.com/reference/filtering-fields.md) for full syntax.
 
 ```bash
 curl -s "https://kg.diffbot.com/kg/v3/dql?token=${TOKEN}&query=ENCODED_QUERY&size=10&filter=name,nbEmployees,industries,locations"
 ```
 
-The filter syntax is sensitive — the API returns `Parse filter failed` if a path is malformed. If this occurs, verify the field paths against the docs or drop the filter and work with the full response.
-
-When the user requests a full JSON dump or CSV download, omit the filter to get the complete response.
+The filter syntax is sensitive — the API returns `Parse filter failed` if a path is malformed. If this occurs, remove fields one at a time to identify the bad path, or drop the filter entirely.
 
 **Display format**
 
