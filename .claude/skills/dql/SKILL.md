@@ -30,7 +30,7 @@ Tokens are available at https://app.diffbot.com/get-started/
 
 ### Step 2 — Construct and validate the DQL query
 
-Translate the user's natural language request into a DQL string. For well-known entity types (Organization, Person, Article, Product), construct the query directly. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
+Translate the user's natural language request into a DQL string. `type:` is the minimum required field for any query — default to `type:Organization` when ambiguous. For well-known entity types (Organization, Person, Article, Product), construct the query directly. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
 
 ```bash
 # All entity type names
@@ -81,34 +81,55 @@ leType[]   — linked entity type names (when isEntity: true)
 taxonomy   — taxonomy name (when field draws from a taxonomy)
 ```
 
-**Entity types**
+**Article tags and categories**
 
-`type:` is the minimum required field for any query. Common types: `type:Organization`, `type:Person`, `type:Article`, `type:Product`. Default to `type:Organization` when ambiguous.
+`type:Article` queries have special handling for tags (entity mentions with sentiment) and categories (IAB/Diffbot taxonomy labels). Tags can be searched by entity URI, label, or type; categories by ID or name. Both support `OR()`, subquery `{}` syntax, and faceting. See [Article Tags and Categories](https://docs.diffbot.com/docs/article-tags-and-categories.md).
 
 **Operators**
 
-| Operator | Syntax | Example |
-|----------|--------|---------|
-| Contains (string) | `field:"value"` | `name:"Diffbot"` |
-| Regex | `re:field:"pattern"` | `re:name:"^Apple"` |
-| Exact match | `strict:field:"value"` | `strict:name:"Apple Inc"` |
-| Greater than | `field>N` | `nbEmployees>500` |
-| Less than | `field<N` | `nbEmployees<10000` |
-| Not equals | `field!=value` | `type:Organization gender!="MALE"` |
-| AND (implicit) | space-separated | `type:Organization isPublic:true` |
-| OR | `or(v1,v2)` | `industries:or("Software","Hardware")` |
-| NOT | `not(condition)` | `not(isPublic:true)`, `not(has:parentCompany)` |
-| Facet (aggregate) | `facet:field` | `facet:locations.city.name` |
-| Facet with ranges | `facet[a:b,b:c]:field` | `facet[100:500,500:1000]:nbEmployees` |
-| Facet with values | `facet["a","b"]:field` | `facet["Austin","Seattle"]:locations.city.name` |
-| Sort ascending | `sortBy:field` | `sortBy:nbEmployees` |
-| Sort descending | `revSortBy:field` | `revSortBy:nbEmployees` |
+| Operator             | Syntax                 | Example                                                  |
+| -------------------- | ---------------------- | -------------------------------------------------------- |
+| Contains (string)    | `field:"value"`        | `name:"Diffbot"`                                         |
+| Regex                | `re:field:"pattern"`   | `re:name:"^Apple"`                                       |
+| Exact match          | `strict:field:"value"` | `strict:name:"Apple Inc"`                                |
+| Greater than         | `field>N`              | `nbEmployees>500`                                        |
+| Less than            | `field<N`              | `nbEmployees<10000`                                      |
+| Not equals           | `field!=value`         | `gender!="MALE"`                                         |
+| Max                  | `max:field:N`          | `max:capitalization.value:1000000`                       |
+| Min                  | `min:field:N`          | `min:capitalization.value:1000000`                       |
+| Range                | `range:field:N-M`      | `range:nbEmployees:10-100`                               |
+| AND (implicit)       | space-separated        | `type:Organization isPublic:true`                        |
+| OR                   | `or(v1,v2)`            | `industries:or("Software","Hardware")`                   |
+| NOT                  | `not(condition)`       | `not(isPublic:true)`, `not(has:parentCompany)`           |
+| Near (proximity)     | `near(name:"Place")`   | `near(name:"San Francisco", 10mi)`                       |
+| Similar to           | `similarTo(…)`         | `similarTo(type:Organization homepageUri:"walmart.com")` |
+| Has (field exists)   | `has:field`            | `has:sicClassification`                                  |
+| Get (include fields) | `get:field`            | `has:subsidiaries get:subsidiaries`                      |
+| Get (exclude fields) | `get:!field`           | `get:!nbEmployeesMax,!phoneNumbers`                      |
+| Facet (aggregate)    | `facet:field`          | `facet:locations.city.name`                              |
+| Facet with ranges    | `facet[a:b,b:c]:field` | `facet[100:500,500:1000]:nbEmployees`                    |
+| Facet with values    | `facet["a","b"]:field` | `facet["Austin","Seattle"]:locations.city.name`          |
+| Sort ascending       | `sortBy:field`         | `sortBy:nbEmployees`                                     |
+| Sort descending      | `revSortBy:field`      | `revSortBy:nbEmployees`                                  |
+
+**similarTo operator** _(experimental — Organization only)_
+
+Finds entities similar to a given entity. See [similarTo Operator](https://docs.diffbot.com/docs/similarto-operator-1.md) for full syntax and examples.
+
+**near operator**
+
+Finds entities within a given distance of a Place (default 15km). Distance can be specified in `mi` or `km`. Only the highest-ranked matching place is used.
+
+**get operator**
+
+`get:field` includes only specified fields (and their descendants) in results; `get:!field` excludes them. Multiple fields are comma-separated. Note: terminal fields return as objects with `confidence`, `origin`, and `value` rather than plain values. For more advanced response filtering, prefer the `&filter=` query parameter (see Step 4).
 
 **Facet queries**
 
 Reach for facet queries when the goal is aggregation or distribution analysis rather than retrieving individual entities — e.g. "what industries are most common among Berlin startups?" or "how are employees distributed across company sizes?". A facet query returns up to 1000 buckets ordered by frequency, each with a `count`, `value`, and `callbackQuery` you can use to drill into matching entities. They are not appropriate when the user wants to see individual entity records.
 
 Key behaviors to know:
+
 - Numeric and date fields are automatically grouped into ranges; custom ranges can be specified with `facet[a:b,b:c]:field`
 - Date fields accept `day`, `week`, or `month` interval specifiers
 - Results can be restricted to specific values with `facet["v1","v2"]:field`
@@ -123,7 +144,7 @@ Use `{}` to co-constrain multiple conditions on the same nested object:
 type:Organization locations.{city.name:"San Francisco" isCurrent:true}
 ```
 
-This ensures San Francisco is a *current* location, not that San Francisco is any location and some other location is current. Without `{}`, the two conditions are independent.
+This ensures San Francisco is a _current_ location, not that San Francisco is any location and some other location is current. Without `{}`, the two conditions are independent.
 
 Not all fields support subqueries. Nestable fields have a composite type (e.g. `Location`, `Employment`) — check the ontology cache with `jq` to confirm. Attempting `{}` on a non-nested field returns: `Nested expression over non-nested list field [...] is not allowed`.
 
@@ -138,6 +159,7 @@ Default `size=10`. Increase up to `size=50` if the user asks for more results. F
 ### Step 4 — Format and display results
 
 The response structure:
+
 - `hits` — integer, total matching entity count
 - `results` — integer, count of entities returned in this page
 - `facet` — boolean, true when the query used `facet:`
@@ -174,16 +196,11 @@ When the user requests a full JSON dump or CSV download, omit the filter to get 
 
 Render results as a terminal table (use plain ASCII borders). Choose columns appropriate to the entity type — for example, Organization: Name, Industry, Employees, Location, Website.
 
-If the result set is large enough that the table would be unwieldy in the terminal (more than ~25 rows or more than ~6 columns), offer to write the results to a CSV file instead before rendering.
+If the result set is large enough that the table would be unwieldy in the terminal (more than ~25 rows or more than ~6 columns), or if the user asks for file output, use the CSV export (see below) rather than writing a local file via Python.
+
+**Exporting CSV/XLS**
+
+Add `&format=csv` (or `xls`/`xlsx`) and `&exportspec=field,Name;field2,Name2` to export results directly without Python formatting. See [Exporting CSV](https://docs.diffbot.com/reference/exporting-csv.md).
 
 After displaying results, offer to fetch the next page or refine the query.
 
-## Error handling
-
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| HTTP 401 | Invalid or missing token | Check `~/.diffbot/credentials` |
-| HTTP 400 | Malformed DQL | Check field names and operators |
-| `hits = 0` | Query too restrictive | Broaden filters or check spelling |
-| `curl: (6) Could not resolve host` | No network | Check connectivity |
-| Empty `~/.diffbot/credentials` | Setup not done | Run the setup commands above |
