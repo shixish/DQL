@@ -15,12 +15,10 @@ Always follow these steps in order:
 ### Step 1 — Initialize credentials and ontology cache
 
 ```bash
-mkdir -p ~/.diffbot && rm -rf ~/.diffbot/tmp && mkdir ~/.diffbot/tmp && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json && TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')
+mkdir -p ~/.diffbot && rm -rf ~/.diffbot/tmp && mkdir ~/.diffbot/tmp && curl -s "https://kg.diffbot.com/kg/ontology" > ~/.diffbot/ontology.json && ls ~/.diffbot/credentials
 ```
 
-Never echo or display the token value.
-
-If `~/.diffbot/credentials` is missing, the directory already exists. Ask the user to run:
+If `~/.diffbot/credentials` is missing, ask the user to run:
 
 ```bash
 echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials && chmod 600 ~/.diffbot/credentials
@@ -28,11 +26,15 @@ echo "token=YOUR_TOKEN_HERE" > ~/.diffbot/credentials && chmod 600 ~/.diffbot/cr
 
 Tokens are available at https://app.diffbot.com/get-started/
 
+If the file exists, assume the token is valid and proceed. If a subsequent API call returns an auth error, inform the user and ask them to verify their credentials file.
+
+Re-run `TOKEN=$(grep '^token=' ~/.diffbot/credentials | cut -d= -f2 | tr -d '[:space:]')` at the top of each subsequent Bash command. Never echo or display the token value.
+
 ### Step 2 — Construct and validate the DQL query
 
 Translate the user's natural language request into a DQL string. `type:` is the minimum required field for any query — default to `type:Organization` when ambiguous. For well-known entity types (Organization, Person, Article, Product), construct the query directly without any `jq` ontology lookups — do not run jq for these types. For unfamiliar types or fields, use `jq` against `~/.diffbot/ontology.json` to look up field names, types, and valid values before writing DQL.
 
-For `type:Article` queries that filter on `categories.name`, run a quick facet query first to discover the exact category name string (e.g. `facet:categories.name` filtered by a broad tag) — category names are not free-text and must match exactly.
+Whenever a field value must be exact (enums, taxonomy categories, classification codes, etc.), look it up in the ontology before writing the query — do not guess. Check the field's type in the ontology: if it draws from an `enums` entry, list that enum's values; if it draws from a `taxonomies` entry, traverse the hierarchy to find the correct name. Some field definitions carry a `taxonomy` property pointing directly to the taxonomy to consult; others link via the `type` name matching a taxonomy key (e.g. `type: "ArticleCategory"`). Check both.
 
 ```bash
 # All entity type names
@@ -53,8 +55,9 @@ jq '.enums.Industry.values[]' ~/.diffbot/ontology.json
 # Type hierarchy (which parent types contribute inherited fields)
 jq '.types.Organization.typeHierarchy' ~/.diffbot/ontology.json
 
-# Top-level taxonomy category names
+# Top-level taxonomy category names (IndustryCategory, ArticleCategory, etc.)
 jq '.taxonomies.IndustryCategory.categories[].name' ~/.diffbot/ontology.json
+jq '.taxonomies.ArticleCategory.categories[].name' ~/.diffbot/ontology.json
 ```
 
 **Ontology schema reference**
