@@ -121,8 +121,6 @@ This ensures San Francisco is a *current* location, not that San Francisco is an
 
 Not all fields support subqueries. Nestable fields have a composite type (e.g. `Location`, `Employment`) — check the ontology cache with `jq` to confirm. Attempting `{}` on a non-nested field returns: `Nested expression over non-nested list field [...] is not allowed`.
 
-Before executing, display the final DQL query in a plain text code block so the user can copy or iterate on it.
-
 ### Step 3 — Execute the request
 
 ```bash
@@ -136,6 +134,8 @@ Default `size=10`. Increase up to `size=50` if the user asks for more results. F
 The response structure:
 - `hits` — total matching entity count (integer)
 - `data[]` — array of result objects, each with an `entity` key
+
+Always display the final DQL query in a plain text code block before the results, so the user can copy or iterate on it.
 
 Pipe the curl output into an inline Python script to parse and display results. Write an appropriate formatter for the entity type being queried. For facet queries, aggregated counts are in a `facets` key alongside `data`.
 
